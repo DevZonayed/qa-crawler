@@ -1,0 +1,79 @@
+{
+  "$comment": "The pattern memory. The engine ships with these archetypes built in (src/archetypes.ts); this file is the canonical, human-editable catalogue and the growth point — add a new archetype + playbook here and register a matcher in src/archetypes.ts to teach the crawler a pattern once and reuse it on every later screen and every later run. Archetype equivalence: the Nth instance of a pattern gets the smoke playbook + a diff against the first, not the full battery.",
+  "archetypes": [
+    {
+      "id": "login",
+      "match": "has input[type=password] and a submit; heading/url mentions sign in / log in",
+      "playbook": [
+        "Password field is type=password (masked), not text.",
+        "A 'forgot password' path and a way to register are both reachable.",
+        "Empty submit is rejected with a clear message; wrong credentials show a non-leaky error.",
+        "Form posts over HTTPS; no credentials in the URL; rate-limited on repeated failure."
+      ]
+    },
+    {
+      "id": "signup",
+      "match": "password (+ confirm) present; heading/url mentions sign up / register / create account",
+      "playbook": [
+        "Password + confirm match rule enforced; weak-password rule if the product claims one.",
+        "Duplicate email is rejected clearly (without leaking whether it existed, if that is the policy).",
+        "Every field has a visible label and an accessible name."
+      ]
+    },
+    {
+      "id": "forgot-password",
+      "match": "text/url mentions forgot or reset password",
+      "playbook": [
+        "Unknown email does NOT reveal whether an account exists (no user enumeration).",
+        "Success state tells the user to check their email; the token flow is single-use and expiring."
+      ]
+    },
+    {
+      "id": "form",
+      "match": "a <form> with inputs and a submit, not a login",
+      "playbook": [
+        "Every input has a visible label + accessible name.",
+        "Required fields validate on submit with the error NEAR the field, not only at the top.",
+        "Boundary + invalid input rejected; valid input persists after reload."
+      ]
+    },
+    {
+      "id": "data-table",
+      "match": "<table> with header cells, or role=table/grid",
+      "playbook": [
+        "Header cells are <th>/scope'd; the empty state is handled.",
+        "Sort/paginate controls work and are keyboard reachable.",
+        "Numbers right-aligned + tabular; a total equals the sum of its rows."
+      ]
+    },
+    {
+      "id": "crud-list",
+      "match": "a list/table plus an Add/New/Create/Invite/Upload affordance",
+      "playbook": [
+        "Create → the item appears in the list; edit persists; delete confirms and removes.",
+        "Empty state guides the user to create the first item.",
+        "Row actions are reachable and labelled."
+      ]
+    },
+    {
+      "id": "search",
+      "match": "a search/filter input with a results area",
+      "playbook": ["Empty query handled; no-results state clear; results match the query; debounced, not janky."]
+    },
+    {
+      "id": "modal",
+      "match": "a [role=dialog] / <dialog open> is present",
+      "playbook": ["Focus is trapped inside; Escape closes; focus returns to the trigger; the background is inert."]
+    },
+    {
+      "id": "wizard",
+      "match": "stepper indicators / Next+Back buttons",
+      "playbook": ["Back preserves entered data; refresh mid-flow does not lose state; each step validates before Next."]
+    },
+    {
+      "id": "content",
+      "match": "fallback — a page that is none of the above",
+      "playbook": ["Renders without console errors; all links resolve; layout holds at every viewport."]
+    }
+  ]
+}

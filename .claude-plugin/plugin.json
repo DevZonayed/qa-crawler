@@ -1,0 +1,13 @@
+{
+  "name": "qa-crawler",
+  "version": "1.0.0",
+  "description": "Autonomous QA coverage crawler: maps the whole app and inspects every node (the inverted maze), with a deterministic engine + ledger + pattern library exposed over MCP, plus a skill and orchestrator/worker subagents.",
+  "author": { "name": "QA Crawler" },
+  "keywords": ["qa", "testing", "coverage", "crawler", "accessibility", "mcp"],
+  "mcpServers": {
+    "qa-crawler": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"]
+    }
+  }
+}

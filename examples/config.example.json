@@ -1,0 +1,51 @@
+{
+  "name": "example-audit",
+  "target": "https://example.com",
+  "seeds": [],
+  "actors": [
+    { "id": "anonymous", "kind": "anonymous", "auth": { "loginUrl": "https://example.com/login" } },
+    {
+      "id": "admin",
+      "kind": "authenticated",
+      "auth": {
+        "loginUrl": "https://example.com/login",
+        "steps": [
+          { "target": "textbox:Email", "action": "fill", "value": "${QA_ADMIN_EMAIL}" },
+          { "target": "textbox:Password", "action": "fill", "value": "${QA_ADMIN_PASSWORD}" },
+          { "target": "button:Sign in", "action": "click" }
+        ],
+        "successUrlIncludes": "/dashboard"
+      }
+    }
+  ],
+  "scope": {
+    "include": ["**"],
+    "exclude": ["**/logout", "**/sign-out", "**/admin/danger/**"],
+    "maxDepth": 6,
+    "maxNodes": 400,
+    "sameOriginOnly": true
+  },
+  "tiers": [
+    { "pattern": "**/checkout/**", "tier": "T1" },
+    { "pattern": "**/billing/**", "tier": "T1" },
+    { "pattern": "**/settings/**", "tier": "T2" },
+    { "pattern": "**/about", "tier": "T3" }
+  ],
+  "checks": {
+    "http": true,
+    "console": true,
+    "brokenLinks": true,
+    "overflow": true,
+    "axe": true,
+    "formProbing": false,
+    "screenshot": true
+  },
+  "viewports": [
+    { "label": "mobile", "w": 375, "h": 812 },
+    { "label": "tablet", "w": 768, "h": 1024 },
+    { "label": "desktop", "w": 1440, "h": 900 }
+  ],
+  "headless": true,
+  "throttleMs": 150,
+  "outDir": "runs"
+}
