@@ -1,0 +1,32 @@
+{
+  "name": "neko-audit",
+  "target": "https://your-app.example.com",
+  "browser": {
+    "mode": "neko",
+    "cdpEndpoint": "http://127.0.0.1:9223",
+    "reuseVisibleContext": true,
+    "bringToFront": true,
+    "slowMo": 250,
+    "$remote_note": "For a REMOTE Neko, set mode to 'cdp' and cdpEndpoint to the remote host's exposed CDP, e.g. { \"mode\": \"cdp\", \"cdpEndpoint\": \"${QA_NEKO_CDP}\", \"headers\": { \"Authorization\": \"Bearer ${NEKO_TOKEN}\" } }. Easiest remote path: SSH-tunnel the remote 9223 to localhost (ssh -N -L 9223:127.0.0.1:9223 user@remote) and keep this as http://127.0.0.1:9223."
+  },
+  "actors": [
+    {
+      "id": "admin",
+      "kind": "authenticated",
+      "auth": {
+        "loginUrl": "https://your-app.example.com/login",
+        "steps": [
+          { "target": "textbox:Email", "action": "fill", "value": "${QA_ADMIN_EMAIL}" },
+          { "target": "textbox:Password", "action": "fill", "value": "${QA_ADMIN_PASSWORD}" },
+          { "target": "button:Sign in", "action": "click" }
+        ],
+        "successUrlIncludes": "/dashboard"
+      }
+    }
+  ],
+  "scope": { "include": ["**"], "exclude": ["**/logout"], "maxDepth": 5, "maxNodes": 200 },
+  "tiers": [{ "pattern": "**/billing/**", "tier": "T1" }],
+  "checks": { "http": true, "console": true, "brokenLinks": true, "overflow": true, "axe": true, "screenshot": true },
+  "viewports": [{ "label": "desktop", "w": 1440, "h": 900 }],
+  "throttleMs": 300
+}

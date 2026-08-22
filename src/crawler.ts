@@ -41,7 +41,7 @@ export class Run {
   }
 
   private async boot(): Promise<void> {
-    this.pool = await BrowserPool.launch(this.config.headless);
+    this.pool = await BrowserPool.launch(this.config);
     for (const actor of this.config.actors) {
       const session = await this.pool.session(actor, this.config.target);
       this.sessions.set(actor.id, session);

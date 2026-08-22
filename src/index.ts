@@ -3,7 +3,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { Run } from "./crawler.js";
 import { writeReport } from "./report.js";
-import { RunConfigSchema } from "./config.js";
+import { RunConfigSchema, BrowserSchema } from "./config.js";
+import { checkCdp, resolveCdpEndpoint, resolveHeaders } from "./neko.js";
 
 /**
  * The QA-crawler MCP server.
@@ -20,6 +21,19 @@ function ok(obj: unknown) {
 }
 
 const server = new McpServer({ name: "qa-crawler", version: "1.0.0" });
+
+server.tool(
+  "qa_browser_check",
+  "Verify a browser transport before a run. For neko/cdp mode, confirms the Neko/CDP endpoint (local or remote) is reachable and reports which browser is on the other end. Call this first when using Neko.",
+  { browser: z.record(z.any()).describe("A browser config: { mode: neko|cdp, cdpEndpoint, headers }.") },
+  async ({ browser }) => {
+    const b = BrowserSchema.parse(browser ?? {});
+    if (b.mode === "launch") return ok({ mode: "launch", note: "local headless Chromium — nothing to check." });
+    const endpoint = resolveCdpEndpoint(b);
+    const result = await checkCdp(endpoint, resolveHeaders(b.headers));
+    return ok({ mode: b.mode, ...result });
+  },
+);
 
 server.tool(
   "qa_run_init",

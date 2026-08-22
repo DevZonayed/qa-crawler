@@ -23,9 +23,14 @@ skipped and forgotten). **Never let the engine do your job** (a green automatic 
 
 ## Procedure
 
+### 0 — Browser transport (watched, so the user can take over)
+- Default to **Neko** so the user watches the run and can grab the mouse for an MFA prompt / CAPTCHA, then hand back: set `browser.mode = "neko"` (local `http://127.0.0.1:9223`). For a **remote Neko**, use `browser.mode = "cdp"` with `cdpEndpoint` (a tunnelled/exposed remote endpoint) and `headers` for auth.
+- **Verify first** with `qa_browser_check` before `qa_run_init` — confirm the endpoint is reachable. Never bypass auth; if login needs a human step, pause and ask the user to take over in Neko, then continue.
+- Use `mode: "launch"` (headless) only for CI / unattended runs where nobody is watching.
+
 ### 1 — Plan (define steps first)
 - Confirm the target, the access level (no code / client / client+server), the scope (partial flow vs complete), and where the **oracle** comes from (spec docs, user stories, or "the product's own copy is the contract").
-- Build the config: `target`, `actors` (one per role/permission you can authenticate — anonymous first so register/forgot-password get covered), `scope` (include/exclude globs, maxDepth, maxNodes), `tiers` (T1 = auth/payments/mutations → exhaustive; T3 = static → smoke), `checks`, `viewports`.
+- Build the config: `target`, `browser` (see step 0), `actors` (one per role/permission you can authenticate — anonymous first so register/forgot-password get covered), `scope` (include/exclude globs, maxDepth, maxNodes), `tiers` (T1 = auth/payments/mutations → exhaustive; T3 = static → smoke), `checks`, `viewports`.
 - With client code: seed `scope.include` and `tiers` from the **route manifest** so the engine's crawl can be diffed against it (orphan/unreachable routes are findings).
 - Call **`qa_run_init`** with the config → keep the `runId`.
 

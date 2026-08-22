@@ -2,9 +2,10 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import type { Actor, Auth } from "./config.js";
+import type { Actor, Auth, RunConfig, BrowserOpts } from "./config.js";
 import { resolveSecret } from "./config.js";
 import { shortHash } from "./state.js";
+import { resolveCdpEndpoint, resolveHeaders } from "./neko.js";
 
 const require = createRequire(import.meta.url);
 /** axe-core ships a browser bundle; we inject its source and run it in-page. */
@@ -44,13 +45,19 @@ export class ActorSession {
     readonly actor: Actor,
     readonly context: BrowserContext,
     readonly page: Page,
+    /** false when we borrowed Neko's existing visible context — we must not close it. */
+    private readonly ownsContext: boolean,
+    private readonly bringToFront: boolean,
   ) {}
 
-  static async create(browser: Browser, actor: Actor, target: string): Promise<ActorSession> {
-    const storage = actor.auth?.storageStatePath;
-    const context = await browser.newContext(storage ? { storageState: storage } : {});
-    const page = await context.newPage();
-    const session = new ActorSession(actor, context, page);
+  static async create(
+    context: BrowserContext,
+    page: Page,
+    actor: Actor,
+    target: string,
+    opts: { ownsContext: boolean; bringToFront: boolean },
+  ): Promise<ActorSession> {
+    const session = new ActorSession(actor, context, page, opts.ownsContext, opts.bringToFront);
     page.on("console", (m) => {
       if (m.type() === "error") session.consoleErrors.push(m.text().slice(0, 400));
     });
@@ -60,7 +67,7 @@ export class ActorSession {
     page.on("response", (r) => {
       if (r.url() === page.url()) session.lastStatus = r.status();
     });
-    if (actor.kind === "authenticated" && actor.auth && !storage) {
+    if (actor.kind === "authenticated" && actor.auth && !actor.auth.storageStatePath) {
       await session.login(actor.auth, target);
     }
     return session;
@@ -99,6 +106,7 @@ export class ActorSession {
     this.consoleErrors = [];
     this.networkFailures = [];
     this.lastStatus = null;
+    if (this.bringToFront) await this.page.bringToFront().catch(() => {});
     const resp = await this.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => null);
     await this.page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
     return resp?.status() ?? this.lastStatus;
@@ -232,6 +240,7 @@ export class ActorSession {
 
   /** Model-in-loop interaction verb (used by the qa_act MCP tool). Small, safe, observable set. */
   async act(action: { kind: "click" | "fill" | "select" | "press"; target: string; value?: string }): Promise<void> {
+    if (this.bringToFront) await this.page.bringToFront().catch(() => {});
     const loc = this.resolve(action.target);
     if (action.kind === "click") await loc.click({ timeout: 8000 });
     else if (action.kind === "fill") await loc.fill(action.value ?? "");
@@ -244,22 +253,68 @@ export class ActorSession {
     await this.page.setViewportSize({ width: w, height: h });
   }
 
+  /** Close only what we created — a borrowed Neko visible context is left exactly as it was. */
   async close(): Promise<void> {
-    await this.context.close().catch(() => {});
+    if (this.ownsContext) await this.context.close().catch(() => {});
   }
 }
 
-/** Owns the shared Chromium and hands out one ActorSession per actor. */
+/**
+ * Owns the browser and hands out one ActorSession per actor.
+ *
+ * `launch` mode starts a headless Chromium we own. `neko`/`cdp` mode CONNECTS to a browser we do NOT
+ * own (the user's Neko) — so on close we disconnect, never kill it. The first actor can reuse Neko's
+ * existing visible context so the run appears in the tab the user is already watching; further actors
+ * get isolated contexts (still in the same visible Chrome, brought to front as they act).
+ */
 export class BrowserPool {
-  private constructor(readonly browser: Browser) {}
-  static async launch(headless: boolean): Promise<BrowserPool> {
-    const browser = await chromium.launch({ headless });
-    return new BrowserPool(browser);
+  private visibleClaimed = false;
+
+  private constructor(
+    readonly browser: Browser,
+    private readonly ownsBrowser: boolean,
+    private readonly opts: BrowserOpts,
+  ) {}
+
+  static async launch(config: RunConfig): Promise<BrowserPool> {
+    const b = config.browser;
+    if (b.mode === "launch") {
+      const browser = await chromium.launch({ headless: config.headless, slowMo: b.slowMo });
+      return new BrowserPool(browser, true, b);
+    }
+    // neko / cdp: connect over the DevTools Protocol to a browser we do not own.
+    const endpointURL = resolveCdpEndpoint(b);
+    const browser = await chromium.connectOverCDP(endpointURL, {
+      headers: resolveHeaders(b.headers),
+      slowMo: b.slowMo,
+      timeout: 20000,
+    });
+    return new BrowserPool(browser, false, b);
   }
-  session(actor: Actor, target: string): Promise<ActorSession> {
-    return ActorSession.create(this.browser, actor, target);
+
+  async session(actor: Actor, target: string): Promise<ActorSession> {
+    const storage = actor.auth?.storageStatePath;
+    let context: BrowserContext;
+    let page: Page;
+    let ownsContext: boolean;
+
+    const canReuse = !this.ownsBrowser && this.opts.reuseVisibleContext && !this.visibleClaimed && !storage;
+    const existing = this.browser.contexts();
+    if (canReuse && existing.length > 0 && existing[0]) {
+      context = existing[0];
+      page = context.pages()[0] ?? (await context.newPage());
+      ownsContext = false;
+      this.visibleClaimed = true;
+    } else {
+      context = await this.browser.newContext(storage ? { storageState: storage } : {});
+      page = await context.newPage();
+      ownsContext = true;
+    }
+    return ActorSession.create(context, page, actor, target, { ownsContext, bringToFront: this.opts.bringToFront });
   }
+
   async close(): Promise<void> {
-    await this.browser.close().catch(() => {});
+    // Only kill a browser we launched. A CDP-connected Neko is disconnected, never closed.
+    if (this.ownsBrowser) await this.browser.close().catch(() => {});
   }
 }

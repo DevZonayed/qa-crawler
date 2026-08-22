@@ -68,6 +68,35 @@ export type Checks = z.infer<typeof ChecksSchema>;
 
 export const ViewportSchema = z.object({ label: z.string(), w: z.number().int(), h: z.number().int() });
 
+/**
+ * Where the browser comes from.
+ *
+ * - `launch` (default): the engine starts its own headless Chromium. Fast, isolated, invisible.
+ * - `neko`:  connect over CDP to a Neko browser — a real, visible Chrome the user watches and can
+ *            take over mid-run (to solve an MFA prompt or CAPTCHA), then hand back. Local default
+ *            endpoint is `http://127.0.0.1:9223`.
+ * - `cdp`:   connect over CDP to ANY endpoint — this is how a REMOTE Neko is added: point
+ *            `cdpEndpoint` at the remote host's exposed/tunnelled CDP (ws(s):// or http(s)://), with
+ *            optional `headers` for auth.
+ *
+ * A CDP connection is NEVER killed on close (that would kill the user's Neko) — we only close the
+ * contexts we created.
+ */
+export const BrowserSchema = z.object({
+  mode: z.enum(["launch", "neko", "cdp"]).default("launch"),
+  /** CDP endpoint for neko/cdp. Defaults to http://127.0.0.1:9223 in `neko` mode. `${ENV}` allowed. */
+  cdpEndpoint: z.string().optional(),
+  /** Headers sent when connecting (e.g. `{ "Authorization": "Bearer ${NEKO_TOKEN}" }`) for a remote Neko behind auth. */
+  headers: z.record(z.string()).default({}),
+  /** Use Neko's EXISTING visible context/tab for the first actor (so it appears in the tab the user is watching). */
+  reuseVisibleContext: z.boolean().default(true),
+  /** Bring the acted page to the front before each step, so the shared Neko screen shows the active tab. */
+  bringToFront: z.boolean().default(true),
+  /** Slow each action down (ms) so a human watching Neko can follow along. 0 = full speed. */
+  slowMo: z.number().int().nonnegative().default(0),
+});
+export type BrowserOpts = z.infer<typeof BrowserSchema>;
+
 export const RunConfigSchema = z.object({
   name: z.string().default("qa-run"),
   target: z.string().url(),
@@ -85,6 +114,9 @@ export const RunConfigSchema = z.object({
     ]),
   /** Where the ledger, evidence and reports for this run are written. */
   outDir: z.string().default("runs"),
+  /** Browser transport: local launch, or connect over CDP to a (local or remote) Neko. */
+  browser: BrowserSchema.default({}),
+  /** Only used in `launch` mode. Neko is always headful (that is the point — you watch it). */
   headless: z.boolean().default(true),
   /** Politeness: ms to wait between navigations. */
   throttleMs: z.number().int().nonnegative().default(150),

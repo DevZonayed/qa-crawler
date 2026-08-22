@@ -3,7 +3,12 @@
     "qa-crawler": {
       "command": "node",
       "args": ["./dist/index.js"],
-      "description": "QA coverage crawler engine (build with `pnpm build` first). Use outside the plugin system, e.g. in another project's .mcp.json — point args at the absolute path to dist/index.js."
+      "description": "QA coverage crawler engine (run `pnpm build` first). Point a run's browser.mode at `neko` to drive Neko over CDP. In another project, use the absolute path to dist/index.js."
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "${QA_NEKO_CDP:-http://127.0.0.1:9223}"],
+      "description": "Playwright MCP bound to the SAME Neko browser over CDP. Generic browser tools, visible in Neko. Set QA_NEKO_CDP for a remote Neko (e.g. http://127.0.0.1:9223 via an SSH tunnel to the remote host)."
     }
   }
 }

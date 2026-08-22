@@ -8,6 +8,11 @@
     "qa-crawler": {
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "${QA_NEKO_CDP:-http://127.0.0.1:9223}"],
+      "description": "Playwright MCP driving the SAME Neko browser over CDP — generic browser tools (navigate/click/snapshot) for ad-hoc steps, visible in Neko. Set QA_NEKO_CDP to a remote Neko's endpoint. Remove this block to use the qa-crawler engine alone."
     }
   }
 }

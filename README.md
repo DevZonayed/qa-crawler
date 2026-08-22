@@ -80,6 +80,52 @@ plugin / to a marketplace), then:
 It loads the **qa-crawl skill** (the operating standard as a procedure), wires the **qa-crawler MCP**,
 and can fan out via the **qa-orchestrator** → **qa-worker** subagents for apps too big for one context.
 
+## Browser transport — Neko (watched), local or remote
+
+By default the engine launches its own headless Chromium. For real QA you usually want **Neko** — a
+streamed, visible Chrome you watch and can **take over mid-run** (to solve an MFA prompt or CAPTCHA),
+then hand back. The engine drives it over CDP. Three modes (config `browser.mode`, or CLI flags):
+
+```bash
+node dist/cli.js --url https://your-app.com --neko            # local Neko at http://127.0.0.1:9223
+node dist/cli.js my-run.json --cdp http://127.0.0.1:9223       # any CDP endpoint
+node dist/cli.js --url https://your-app.com                    # launch (headless, default)
+```
+
+```jsonc
+// in a run config
+"browser": {
+  "mode": "neko",                       // launch | neko | cdp
+  "cdpEndpoint": "http://127.0.0.1:9223",// neko default; set for cdp/remote
+  "headers": { "Authorization": "Bearer ${NEKO_TOKEN}" }, // optional, for a remote behind auth
+  "reuseVisibleContext": true,          // run in the tab the user is watching
+  "bringToFront": true,                 // keep the acted tab on the shared screen
+  "slowMo": 250                         // ms per action, so a human can follow
+}
+```
+
+**Adding a REMOTE Neko.** Neko's CDP binds to loopback on its host, so expose it to the engine one of
+two ways, then point `cdpEndpoint` at it:
+
+- **SSH tunnel (simplest, keeps it private):** `ssh -N -L 9223:127.0.0.1:9223 user@remote-neko-host`,
+  then keep `cdpEndpoint: "http://127.0.0.1:9223"` — the engine talks to the remote Neko through the
+  tunnel. Set `QA_NEKO_CDP=http://127.0.0.1:9223` for the Playwright-MCP block too.
+- **Reverse proxy with auth:** expose the remote CDP behind TLS + a token, set
+  `mode: "cdp"`, `cdpEndpoint: "https://neko.example.com/cdp"`, and `headers` for the token.
+
+Verify before a run: the MCP tool **`qa_browser_check`** (or `curl http://127.0.0.1:9223/json/version`)
+confirms the endpoint and reports which browser is on the other end.
+
+**Safe by design:** a CDP-connected Neko is **never killed** on close — the engine disconnects (closes
+its socket) and leaves your Neko running, exactly as the `neko` CLI does.
+
+### Playwright-MCP on the same Neko
+
+The plugin also wires **`@playwright/mcp`** to the *same* Neko over CDP, so the agent gets generic
+browser tools (navigate / click / snapshot) — visible in Neko — for ad-hoc steps alongside the
+qa-crawler engine. Set `QA_NEKO_CDP` to a remote endpoint to point both at a remote Neko. Remove the
+`playwright` block from `.mcp.json` / `plugin.json` to use the engine alone.
+
 ## The traversal model (the "inverted maze")
 
 | | Maze solver | QA crawler (this) |
