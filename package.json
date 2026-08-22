@@ -1,6 +1,6 @@
 {
   "name": "qa-crawler",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Autonomous QA coverage crawler — deterministic engine + ledger + pattern library, exposed as an MCP server and a CLI. The 'inverted maze': map the whole app and inspect every node, never search for a single exit.",
   "type": "module",
   "bin": {

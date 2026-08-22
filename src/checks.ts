@@ -18,6 +18,23 @@ export interface RawFinding {
 const axeSeverity: Record<string, Severity> = { critical: "S2", serious: "S3", moderate: "S4", minor: "S5" };
 
 /**
+ * Link-check budget, shared for the lifetime of the process (one run). Without this the checker is a
+ * request amplifier: the same nav links re-fetched on every node, which trips rate limiters and turns
+ * the app's defensive 429s into bogus findings.
+ */
+const linkStatusCache = new Map<string, number>();
+let linkChecksThisRun = 0;
+const MAX_LINK_CHECKS_PER_NODE = 25;
+const MAX_LINK_CHECKS_PER_RUN = 300;
+const LINK_CHECK_PACE_MS = 120;
+
+/** Reset the link budget between runs in the same process (the MCP server is long-lived). */
+export function resetLinkBudget(): void {
+  linkStatusCache.clear();
+  linkChecksThisRun = 0;
+}
+
+/**
  * The deterministic check battery. Everything here is decidable in code — no model judgment — so it is
  * the trustworthy baseline that runs on every node. The model-in-loop layer ADDS judgment
  * (does behaviour match intent, is the UX wrong) on top of these facts; it does not replace them.
@@ -65,25 +82,42 @@ export async function runChecks(
 
   // Horizontal overflow — the page body scrolls sideways (responsive breakage).
   if (checks.overflow && obs.overflow) {
-    findings.push({
-      severity: "S4",
-      category: "visual",
-      title: "Horizontal overflow — the page scrolls sideways",
-      detail: "documentElement.scrollWidth exceeds clientWidth, so content is cut off or the body scrolls horizontally.",
-    });
+    // Reproduce-before-report: a symptom that vanishes on a second measurement is noise.
+    const confirmed = await session.confirmOverflow();
+    if (confirmed.overflow)
+      findings.push({
+        severity: "S4",
+        category: "visual",
+        title: "Horizontal overflow — the page scrolls sideways",
+        detail: `documentElement.scrollWidth exceeds clientWidth by ${confirmed.px}px (confirmed twice), so content is cut off or the body scrolls horizontally.`,
+        expected: "scrollWidth <= clientWidth",
+        actual: `${confirmed.px}px of overflow`,
+      });
   }
 
   // Broken same-origin links (dead controls / 404s the user would hit next).
   if (checks.brokenLinks) {
-    const targets = obs.links.filter((h) => sameOrigin(h, config.target)).slice(0, 25);
-    const seen = new Set<string>();
+    // RUN-WIDE dedup: a nav link appears on every page, so a per-node `seen` set re-checked the same
+    // handful of URLs on every node — ~25 requests x N nodes. On the first real run that request
+    // amplification tripped the app's own rate limiter (429), and those 429s were then reported as
+    // "console error" findings: the checker corrupting its own results. Now each URL is checked ONCE
+    // per run, results are cached, and requests are paced.
+    const targets = obs.links.filter((h) => sameOrigin(h, config.target)).slice(0, MAX_LINK_CHECKS_PER_NODE);
     for (const href of targets) {
-      if (seen.has(href)) continue;
-      seen.add(href);
-      const status = await session.page
-        .request.get(href, { maxRedirects: 3, timeout: 8000 })
-        .then((r) => r.status())
-        .catch(() => 0);
+      const key = href.split("#")[0]!;
+      let status = linkStatusCache.get(key);
+      if (status === undefined) {
+        if (linkChecksThisRun >= MAX_LINK_CHECKS_PER_RUN) break;
+        linkChecksThisRun++;
+        status = await session.page
+          .request.get(href, { maxRedirects: 3, timeout: 8000 })
+          .then((r) => r.status())
+          .catch(() => 0);
+        linkStatusCache.set(key, status);
+        await new Promise((r) => setTimeout(r, LINK_CHECK_PACE_MS)); // pace: never out-run the app
+      } else {
+        continue; // already checked (and reported, if broken) earlier in this run
+      }
       if (status === 0 || status >= 400) {
         findings.push({
           severity: status >= 500 || status === 0 ? "S2" : "S3",

@@ -64,7 +64,13 @@ export class ActorSession {
       if (m.type() === "error") session.consoleErrors.push(m.text().slice(0, 400));
     });
     page.on("requestfailed", (r) => {
-      session.networkFailures.push(`${r.method()} ${r.url().slice(0, 200)} — ${r.failure()?.errorText ?? "failed"}`);
+      // Ignore requests WE cancelled by navigating away. A framework prefetch (Next.js `_rsc=`,
+      // <link rel=prefetch>) that is aborted mid-flight is normal behaviour, not a defect — reporting
+      // it produced 26 pure false positives on the first real run. A genuinely broken request fails
+      // with a different errorText (ERR_CONNECTION_*, ERR_NAME_NOT_RESOLVED, timeouts...).
+      const err = r.failure()?.errorText ?? "failed";
+      if (err.includes("ERR_ABORTED")) return;
+      session.networkFailures.push(`${r.method()} ${r.url().slice(0, 200)} — ${err}`);
     });
     page.on("response", (r) => {
       if (r.url() === page.url()) session.lastStatus = r.status();
@@ -251,8 +257,37 @@ export class ActorSession {
     await this.page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
   }
 
+  /**
+   * Resize AND let the layout settle. Measuring immediately after a resize reads the page mid-reflow,
+   * which produced a phantom horizontal-overflow finding on the first real run (reported at 375px,
+   * reproduced at 0px). The wait is cheap; a false positive is not.
+   */
   async setViewport(w: number, h: number): Promise<void> {
     await this.page.setViewportSize({ width: w, height: h });
+    // Two rAFs = one committed layout+paint after the resize, then a short grace for async reflow
+    // (fonts, virtualised tables, ResizeObserver-driven components).
+    await this.page
+      .evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))))
+      .catch(() => {});
+    await this.page.waitForTimeout(350);
+  }
+
+  /**
+   * Re-measure horizontal overflow, and only report it if it holds. Reproduce-before-report (the
+   * Standard's flake discipline) applied at the engine level: a symptom that does not survive a
+   * second look is noise, not a defect.
+   */
+  async confirmOverflow(): Promise<{ overflow: boolean; px: number }> {
+    const measure = () =>
+      this.page.evaluate(() => {
+        const de = document.documentElement;
+        return de.scrollWidth - de.clientWidth;
+      });
+    const first = await measure().catch(() => 0);
+    if (first <= 2) return { overflow: false, px: 0 };
+    await this.page.waitForTimeout(400);
+    const second = await measure().catch(() => 0);
+    return { overflow: second > 2, px: Math.min(first, second) };
   }
 
   /** Close only what we created — a borrowed Neko visible context is left exactly as it was. */

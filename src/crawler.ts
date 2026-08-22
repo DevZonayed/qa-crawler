@@ -6,7 +6,7 @@ import { RunConfigSchema } from "./config.js";
 import { BrowserPool, ActorSession, type Observation } from "./browser.js";
 import { Ledger, type NodeRow, type Tier } from "./ledger.js";
 import { classify, PLAYBOOKS, type Archetype } from "./archetypes.js";
-import { runChecks, findingId, type RawFinding } from "./checks.js";
+import { runChecks, findingId, resetLinkBudget, type RawFinding } from "./checks.js";
 import { nodeId, routeTemplate, sameOrigin, matchesAny, shortHash } from "./state.js";
 
 /**
@@ -42,6 +42,7 @@ export class Run {
     const ledger = new Ledger(config.outDir, id);
     ledger.startRun(id, config.name, config.target, JSON.stringify(config));
     const requeued = existingId ? ledger.requeueInterrupted(id) : 0;
+    resetLinkBudget(); // the MCP server is long-lived; each run gets a fresh link-check budget
     const run = new Run(id, config, ledger);
     run.resumedInterrupted = requeued;
     await run.boot();
@@ -166,13 +167,19 @@ export class Run {
         screenshotName: `${shortHash(node.id)}-${vp.label}`,
       });
       if (vobs.screenshotPath) evidence[`screenshot_${vp.label}`] = vobs.screenshotPath;
-      if (this.config.checks.overflow && vobs.overflow)
-        findings.push({
-          severity: "S4",
-          category: "visual",
-          title: `Horizontal overflow at ${vp.label} (${vp.w}px)`,
-          detail: `The page scrolls sideways at ${vp.w}×${vp.h}. Responsive breakage.`,
-        });
+      if (this.config.checks.overflow && vobs.overflow) {
+        // Reproduce-before-report: only a symptom that survives a second measurement is a finding.
+        const confirmed = await session.confirmOverflow();
+        if (confirmed.overflow)
+          findings.push({
+            severity: "S4",
+            category: "visual",
+            title: `Horizontal overflow at ${vp.label} (${vp.w}px)`,
+            detail: `The page scrolls sideways at ${vp.w}×${vp.h} by ${confirmed.px}px — confirmed by a second measurement after layout settled. Wide content should scroll inside its own overflow-x container instead of the page body.`,
+            expected: "documentElement.scrollWidth <= clientWidth",
+            actual: `${confirmed.px}px of horizontal overflow`,
+          });
+      }
     }
     await session.setViewport(primary.w, primary.h);
 
