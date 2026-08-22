@@ -7,7 +7,9 @@ set -e
 cd "$(dirname "$0")"
 
 echo "▶ qa-crawler setup: installing dependencies (native SQLite + Chromium)…"
-pnpm install
+# Non-fatal: some pnpm versions exit non-zero over blocked build scripts even when the install itself
+# landed; the verification steps below compile/download whatever is missing either way.
+pnpm install || echo "  (pnpm install exited non-zero — verifying and repairing below)"
 
 echo "▶ building…"
 pnpm build
