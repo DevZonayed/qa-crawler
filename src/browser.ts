@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import type { Actor, Auth, RunConfig, BrowserOpts } from "./config.js";
 import { resolveSecret } from "./config.js";
 import { shortHash } from "./state.js";
-import { resolveCdpEndpoint, resolveHeaders } from "./neko.js";
+import { resolveBrowserPlan, type BrowserPlan } from "./neko.js";
 
 const require = createRequire(import.meta.url);
 /** axe-core ships a browser bundle; we inject its source and run it in-page. */
@@ -271,29 +271,35 @@ export class ActorSession {
  */
 export class BrowserPool {
   private readonly sessionKey: string;
+  /** Human-readable description of the transport `auto` (or an explicit mode) resolved to. */
+  readonly description: string;
 
   private constructor(
     readonly browser: Browser,
     private readonly ownsBrowser: boolean,
     private readonly opts: BrowserOpts,
+    description: string,
   ) {
     this.sessionKey = resolveSecret(opts.sessionKey) || process.env.QA_SESSION || "qa";
+    this.description = description;
   }
 
   static async launch(config: RunConfig): Promise<BrowserPool> {
     const b = config.browser;
-    if (b.mode === "launch") {
-      const browser = await chromium.launch({ headless: config.headless, slowMo: b.slowMo });
-      return new BrowserPool(browser, true, b);
+    const plan: BrowserPlan = await resolveBrowserPlan(b, config.headless);
+    if (plan.kind === "launch") {
+      const browser = await chromium.launch({ headless: plan.headless, slowMo: b.slowMo });
+      const label = `${plan.via === "auto" ? "auto→" : ""}launch (${plan.headless ? "headless" : "headed — watch the window"})`;
+      return new BrowserPool(browser, true, b, label);
     }
-    // neko / cdp: connect over the DevTools Protocol to a browser we do not own.
-    const endpointURL = resolveCdpEndpoint(b);
-    const browser = await chromium.connectOverCDP(endpointURL, {
-      headers: resolveHeaders(b.headers),
+    // Connect over the DevTools Protocol to a browser we do not own (Neko, local or remote).
+    const browser = await chromium.connectOverCDP(plan.endpoint, {
+      headers: plan.headers,
       slowMo: b.slowMo,
       timeout: 20000,
     });
-    return new BrowserPool(browser, false, b);
+    const label = `${plan.via === "auto" ? "auto→" : ""}cdp ${plan.endpoint}`;
+    return new BrowserPool(browser, false, b, label);
   }
 
   /**

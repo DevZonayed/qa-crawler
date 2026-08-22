@@ -45,8 +45,7 @@ async function main() {
   const resumeId = flag(args, "--resume");
   const run = await Run.create(config, resumeId || undefined);
   if (resumeId) console.error(`↻ resuming ${resumeId} — ${run.resumedInterrupted} interrupted node(s) re-queued`);
-  const mode = ((config.browser as { mode?: string } | undefined)?.mode) ?? "launch";
-  console.error(`▶ run ${run.id} — crawling ${(config as { target: string }).target} [browser: ${mode}]`);
+  console.error(`▶ run ${run.id} — crawling ${(config as { target: string }).target} [browser: ${run.browserDescription}]`);
   let last = 0;
   await run.crawlAuto((node, i) => {
     if (i - last >= 1) {

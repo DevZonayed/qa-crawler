@@ -112,11 +112,23 @@ plugin / to a marketplace), then:
 It loads the **qa-crawl skill** (the operating standard as a procedure), wires the **qa-crawler MCP**,
 and can fan out via the **qa-orchestrator** → **qa-worker** subagents for apps too big for one context.
 
-## Browser transport — Neko (watched), local or remote
+## Browser transport — auto by default: local Chromium on a laptop, Neko on a server
 
-By default the engine launches its own headless Chromium. For real QA you usually want **Neko** — a
-streamed, visible Chrome you watch and can **take over mid-run** (to solve an MFA prompt or CAPTCHA),
-then hand back. The engine drives it over CDP. Three modes (config `browser.mode`, or CLI flags):
+You don't need Neko everywhere. On a **local computer**, Playwright's own Chromium — launched *headed*
+— IS the watchable browser: the window opens on your screen. Neko earns its place on a **server**
+(headless box, remote watching, mid-run human takeover for MFA/CAPTCHA). So the default mode is
+**`auto`**, which picks per machine:
+
+1. `$QA_BROWSER` (launch|neko|cdp) set → forced, no probing.
+2. A configured `cdpEndpoint` or `$QA_NEKO_CDP` that answers → **Neko/CDP** (server or tunnelled remote).
+3. The local Neko default (`127.0.0.1:9223`) answering → **local Neko**.
+4. Otherwise → **launch Chromium**: *headed* when a display exists (your laptop), *headless* when not (CI).
+
+The CLI prints what it resolved: `[browser: auto→cdp http://127.0.0.1:9223]` or
+`[browser: launch (headed — watch the window)]`. The `qa_browser_check` MCP tool reports the same
+before a run. The bundled Playwright-MCP uses the identical detection (`scripts/playwright-mcp.mjs`).
+
+Explicit modes when you want them (config `browser.mode`, or CLI flags):
 
 ```bash
 node dist/cli.js --url https://your-app.com --neko            # local Neko at http://127.0.0.1:9223

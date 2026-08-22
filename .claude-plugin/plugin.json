@@ -1,6 +1,6 @@
 {
   "name": "qa-crawler",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Autonomous QA coverage crawler: maps the whole app and inspects every node (the inverted maze), with a deterministic engine + ledger + pattern library exposed over MCP, plus a skill and orchestrator/worker subagents.",
   "author": { "name": "QA Crawler" },
   "keywords": ["qa", "testing", "coverage", "crawler", "accessibility", "mcp"],
@@ -10,9 +10,9 @@
       "args": ["${CLAUDE_PLUGIN_ROOT}/dist/index.js"]
     },
     "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "${QA_NEKO_CDP:-http://127.0.0.1:9223}"],
-      "description": "Playwright MCP driving the SAME Neko browser over CDP — generic browser tools (navigate/click/snapshot) for ad-hoc steps, visible in Neko. Set QA_NEKO_CDP to a remote Neko's endpoint. Remove this block to use the qa-crawler engine alone."
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/playwright-mcp.mjs"],
+      "description": "Playwright MCP with auto browser selection: attaches to Neko over CDP when one is reachable (local 9223 or $QA_NEKO_CDP — the server case), else launches its own Chromium, headed if a display exists (the laptop case). $QA_BROWSER=launch forces local. Remove this block to use the qa-crawler engine alone."
     }
   }
 }

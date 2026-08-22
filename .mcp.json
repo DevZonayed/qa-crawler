@@ -6,9 +6,9 @@
       "description": "QA coverage crawler engine (run `pnpm build` first). Point a run's browser.mode at `neko` to drive Neko over CDP. In another project, use the absolute path to dist/index.js."
     },
     "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest", "--cdp-endpoint", "${QA_NEKO_CDP:-http://127.0.0.1:9223}"],
-      "description": "Playwright MCP bound to the SAME Neko browser over CDP. Generic browser tools, visible in Neko. Set QA_NEKO_CDP for a remote Neko (e.g. http://127.0.0.1:9223 via an SSH tunnel to the remote host)."
+      "command": "node",
+      "args": ["./scripts/playwright-mcp.mjs"],
+      "description": "Playwright MCP with auto browser selection: Neko over CDP when reachable (local 9223 or $QA_NEKO_CDP), else its own Chromium — headed with a display, headless without. $QA_BROWSER=launch forces local."
     }
   }
 }

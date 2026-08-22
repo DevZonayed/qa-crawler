@@ -4,7 +4,7 @@ import { z } from "zod";
 import { Run } from "./crawler.js";
 import { writeReport } from "./report.js";
 import { RunConfigSchema, BrowserSchema } from "./config.js";
-import { checkCdp, resolveCdpEndpoint, resolveHeaders } from "./neko.js";
+import { checkCdp, resolveBrowserPlan, hasDisplay } from "./neko.js";
 
 /**
  * The QA-crawler MCP server.
@@ -24,14 +24,16 @@ const server = new McpServer({ name: "qa-crawler", version: "1.0.0" });
 
 server.tool(
   "qa_browser_check",
-  "Verify a browser transport before a run. For neko/cdp mode, confirms the Neko/CDP endpoint (local or remote) is reachable and reports which browser is on the other end. Call this first when using Neko.",
-  { browser: z.record(z.any()).describe("A browser config: { mode: neko|cdp, cdpEndpoint, headers }.") },
+  "Verify a browser transport before a run. Reports what `auto` resolves to on THIS machine (a reachable Neko/CDP endpoint on a server, or a launched Chromium — headed if a display exists — on a laptop/CI), and for neko/cdp confirms the endpoint is reachable. Call this first.",
+  { browser: z.record(z.any()).optional().describe("A browser config: { mode: auto|launch|neko|cdp, cdpEndpoint, headers }. Omit for the auto default.") },
   async ({ browser }) => {
     const b = BrowserSchema.parse(browser ?? {});
-    if (b.mode === "launch") return ok({ mode: "launch", note: "local headless Chromium — nothing to check." });
-    const endpoint = resolveCdpEndpoint(b);
-    const result = await checkCdp(endpoint, resolveHeaders(b.headers));
-    return ok({ mode: b.mode, ...result });
+    const plan = await resolveBrowserPlan(b, true);
+    if (plan.kind === "launch") {
+      return ok({ mode: b.mode, resolved: "launch", headless: plan.headless, display: hasDisplay(), note: plan.headless ? "no display and no reachable Neko — headless Chromium" : "display present — headed Chromium you can watch directly" });
+    }
+    const probe = await checkCdp(plan.endpoint, plan.headers);
+    return ok({ mode: b.mode, resolved: "cdp", ...probe });
   },
 );
 
@@ -47,6 +49,7 @@ server.tool(
     runs.set(run.id, run);
     return ok({
       runId: run.id,
+      browser: run.browserDescription,
       resumed: Boolean(resumeRunId),
       requeuedInterrupted: run.resumedInterrupted,
       status: run.ledger.status(run.id),

@@ -38,13 +38,60 @@ function httpBase(endpoint: string): string {
 export async function checkCdp(
   endpoint: string,
   headers: Record<string, string> = {},
+  timeoutMs = 6000,
 ): Promise<{ ok: boolean; endpoint: string; browser?: string; error?: string }> {
   try {
-    const res = await fetch(`${httpBase(endpoint)}/json/version`, { headers, signal: AbortSignal.timeout(6000) });
+    const res = await fetch(`${httpBase(endpoint)}/json/version`, { headers, signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return { ok: false, endpoint, error: `CDP responded ${res.status}` };
     const v = (await res.json()) as { Browser?: string; webSocketDebuggerUrl?: string };
     return { ok: true, endpoint, browser: v.Browser ?? "unknown" };
   } catch (e) {
     return { ok: false, endpoint, error: (e as Error).message };
   }
+}
+
+/** Is there a screen a locally-launched headed Chromium could appear on? */
+export function hasDisplay(): boolean {
+  if (process.platform === "darwin" || process.platform === "win32") return true;
+  return Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+}
+
+/** The concrete transport `auto` (or an explicit mode) resolves to. */
+export type BrowserPlan =
+  | { kind: "cdp"; endpoint: string; headers: Record<string, string>; via: "neko" | "cdp" | "auto" }
+  | { kind: "launch"; headless: boolean; via: "launch" | "auto" };
+
+/**
+ * Resolve the browser transport for a run.
+ *
+ * Explicit modes are honoured as-is. `auto` picks the right thing for the machine:
+ *  1. `$QA_BROWSER` (launch|neko|cdp) forces a mode without touching the config file.
+ *  2. A configured `cdpEndpoint` or `$QA_NEKO_CDP` that answers → use it (a server with Neko,
+ *     or a tunnelled remote Neko).
+ *  3. The local Neko default (127.0.0.1:9223) answering → use it (this box runs Neko).
+ *  4. Otherwise LAUNCH Playwright's own Chromium — HEADED when a display exists (a laptop:
+ *     the user watches the real window, no Neko needed), headless when there is none (CI).
+ */
+export async function resolveBrowserPlan(
+  browser: BrowserOpts,
+  configHeadless: boolean,
+): Promise<BrowserPlan> {
+  const forced = (process.env.QA_BROWSER ?? "").toLowerCase();
+  const mode = forced === "launch" || forced === "neko" || forced === "cdp" ? forced : browser.mode;
+
+  if (mode === "launch") return { kind: "launch", headless: configHeadless, via: "launch" };
+  if (mode === "neko" || mode === "cdp") {
+    return { kind: "cdp", endpoint: resolveCdpEndpoint({ ...browser, mode }), headers: resolveHeaders(browser.headers), via: mode };
+  }
+
+  // auto —
+  const headers = resolveHeaders(browser.headers);
+  const explicit = resolveSecret(browser.cdpEndpoint) ?? process.env.QA_NEKO_CDP;
+  if (explicit) {
+    const probe = await checkCdp(explicit, headers, 4000);
+    if (probe.ok) return { kind: "cdp", endpoint: explicit, headers, via: "auto" };
+  }
+  const local = await checkCdp(LOCAL_NEKO_CDP, {}, 1500);
+  if (local.ok) return { kind: "cdp", endpoint: LOCAL_NEKO_CDP, headers: {}, via: "auto" };
+  return { kind: "launch", headless: hasDisplay() ? false : true, via: "auto" };
 }

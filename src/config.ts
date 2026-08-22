@@ -83,7 +83,13 @@ export const ViewportSchema = z.object({ label: z.string(), w: z.number().int(),
  * contexts we created.
  */
 export const BrowserSchema = z.object({
-  mode: z.enum(["launch", "neko", "cdp"]).default("launch"),
+  /**
+   * `auto` (default) picks the right transport for the machine: a reachable Neko/CDP endpoint
+   * (configured, $QA_NEKO_CDP, or the local Neko default) wins — that's the server case; otherwise it
+   * LAUNCHES Playwright's own Chromium, headed when a display exists (a laptop: you watch the real
+   * window, no Neko needed) and headless when there is none (CI). `$QA_BROWSER` forces a mode.
+   */
+  mode: z.enum(["auto", "launch", "neko", "cdp"]).default("auto"),
   /** CDP endpoint for neko/cdp. Defaults to http://127.0.0.1:9223 in `neko` mode. `${ENV}` allowed. */
   cdpEndpoint: z.string().optional(),
   /** Headers sent when connecting (e.g. `{ "Authorization": "Bearer ${NEKO_TOKEN}" }`) for a remote Neko behind auth. */

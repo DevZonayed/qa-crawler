@@ -23,10 +23,10 @@ skipped and forgotten). **Never let the engine do your job** (a green automatic 
 
 ## Procedure
 
-### 0 — Browser transport (watched, so the user can take over)
-- Default to **Neko** so the user watches the run and can grab the mouse for an MFA prompt / CAPTCHA, then hand back: set `browser.mode = "neko"` (local `http://127.0.0.1:9223`). For a **remote Neko**, use `browser.mode = "cdp"` with `cdpEndpoint` (a tunnelled/exposed remote endpoint) and `headers` for auth.
-- **Verify first** with `qa_browser_check` before `qa_run_init` — confirm the endpoint is reachable. Never bypass auth; if login needs a human step, pause and ask the user to take over in Neko, then continue.
-- Use `mode: "launch"` (headless) only for CI / unattended runs where nobody is watching.
+### 0 — Browser transport (watchable, chosen per machine)
+- Leave `browser.mode` at its default **`auto`** — it picks the right watchable browser for the machine: a reachable **Neko** (configured endpoint, `$QA_NEKO_CDP`, or local `127.0.0.1:9223`) on a server; otherwise a **launched Chromium, headed when a display exists** (a local computer: the user watches the real window — no Neko needed) and headless when not (CI).
+- Call **`qa_browser_check`** before `qa_run_init` and TELL the user what it resolved to ("driving your local Chromium" vs "driving Neko at …"), so they know where to watch.
+- Force a mode only when the situation demands it: `browser.mode = "cdp"` + `cdpEndpoint`/`headers` for a specific **remote Neko**; `mode: "launch"` (or `$QA_BROWSER=launch`) for unattended runs. Never bypass auth; if login needs a human step, pause and ask the user to take over in the watched browser, then continue.
 
 ### 1 — Plan (define steps first)
 - Confirm the target, the access level (no code / client / client+server), the scope (partial flow vs complete), and where the **oracle** comes from (spec docs, user stories, or "the product's own copy is the contract").

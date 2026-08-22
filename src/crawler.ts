@@ -51,6 +51,11 @@ export class Run {
   /** How many `in_progress` nodes were put back on the frontier when this run was resumed. */
   resumedInterrupted = 0;
 
+  /** Which browser transport `auto` (or an explicit mode) actually resolved to. */
+  get browserDescription(): string {
+    return this.pool?.description ?? "(not booted)";
+  }
+
   private async boot(): Promise<void> {
     this.pool = await BrowserPool.launch(this.config);
     for (const actor of this.config.actors) {
