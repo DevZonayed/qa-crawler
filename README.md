@@ -25,13 +25,44 @@ Golden QA Session*. The short version — six invariants, enforced by the ledger
 
 ## Install
 
+Requires Node ≥ 20 and pnpm. One native step is unavoidable everywhere: `better-sqlite3` compiles a
+native module and Playwright downloads Chromium — so every install path ends with **`pnpm run setup`**
+(= `pnpm install && pnpm build`) run once inside the plugin directory.
+
+### As a Claude Code plugin (recommended)
+
 ```bash
-cd qa-crawler
-pnpm install            # also runs `playwright install chromium`
-pnpm build
+# 1. Add the marketplace and install
+/plugin marketplace add DevZonayed/qa-crawler   # or: /plugin marketplace add https://github.com/DevZonayed/qa-crawler
+/plugin install qa-crawler@qa-crawler-marketplace
+
+# 2. One-time build inside the installed plugin directory (native SQLite + Chromium)
+cd ~/.claude/plugins/qa-crawler* && pnpm run setup    # path shown by /plugin
+
+# 3. Verify
+/qa-crawl https://example.com
 ```
 
-Requires Node ≥ 20. `better-sqlite3` compiles a native module on install; `playwright` downloads Chromium.
+Working from a clone instead (development / your own machine):
+
+```bash
+git clone https://github.com/DevZonayed/qa-crawler && cd qa-crawler
+pnpm run setup
+node dist/cli.js --url https://example.com          # smoke: should report ~2 a11y findings
+```
+
+Then register it as a local marketplace: `/plugin marketplace add /path/to/qa-crawler`.
+
+### Resuming an interrupted run
+
+Every run is crash-only: state lives in `runs/<runId>/ledger.db`, so an interrupted run continues from
+its frontier — finished nodes stay finished, interrupted ones are re-queued.
+
+```bash
+node dist/cli.js my-run.json --resume books-2026-08-22-6cb823
+```
+
+Over MCP: `qa_run_init({ config, resumeRunId: "books-2026-08-22-6cb823" })`.
 
 ## 1 · CLI (no agent)
 

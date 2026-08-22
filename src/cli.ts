@@ -34,14 +34,17 @@ async function main() {
   } else if (args[0] && !args[0].startsWith("--")) {
     config = JSON.parse(readFileSync(args[0], "utf8"));
   } else {
-    console.error("usage: qa-crawl <config.json> [--neko|--cdp <endpoint>]   |   qa-crawl --url <target> [--neko]");
+    console.error("usage: qa-crawl <config.json> [--neko|--cdp <endpoint>] [--resume <runId>]   |   qa-crawl --url <target> [--neko]");
     process.exit(1);
   }
   const browser = browserFromArgs(args);
   if (browser) config.browser = { ...(config.browser as object), ...browser };
   if (args.includes("--headed")) config.headless = false;
 
-  const run = await Run.create(config);
+  // --resume <runId>: reopen runs/<runId>/ledger.db and continue from the frontier.
+  const resumeId = flag(args, "--resume");
+  const run = await Run.create(config, resumeId || undefined);
+  if (resumeId) console.error(`↻ resuming ${resumeId} — ${run.resumedInterrupted} interrupted node(s) re-queued`);
   const mode = ((config.browser as { mode?: string } | undefined)?.mode) ?? "launch";
   console.error(`▶ run ${run.id} — crawling ${(config as { target: string }).target} [browser: ${mode}]`);
   let last = 0;

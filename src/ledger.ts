@@ -113,6 +113,18 @@ export class Ledger {
     return true;
   }
 
+  /**
+   * Resume hygiene: a node left `in_progress` was interrupted mid-inspection (crash, kill, context
+   * reset). Put it back on the frontier so the resumed run picks it up — inspection is idempotent, so
+   * re-running it is safe. Returns how many were re-queued.
+   */
+  requeueInterrupted(runId: string): number {
+    const r = this.db
+      .prepare(`UPDATE nodes SET status='queued', updated_at=? WHERE run_id=? AND status='in_progress'`)
+      .run(new Date().toISOString(), runId);
+    return r.changes;
+  }
+
   /** The frontier: the next queued node, T1 first (risk throttles depth), then shallowest. */
   nextQueued(runId: string): NodeRow | undefined {
     return this.db

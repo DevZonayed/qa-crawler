@@ -6,13 +6,20 @@
   "bin": {
     "qa-crawl": "dist/cli.js"
   },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DevZonayed/qa-crawler.git"
+  },
   "scripts": {
+    "setup": "pnpm install && pnpm build",
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "cli": "node dist/cli.js",
     "postinstall": "playwright install chromium",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "node dist/cli.js --url https://example.com"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

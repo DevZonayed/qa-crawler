@@ -37,12 +37,21 @@ server.tool(
 
 server.tool(
   "qa_run_init",
-  "Start (or resume) a QA run from a config. Launches the browser, logs in each actor, seeds the frontier. Returns the runId — pass it to every other tool.",
-  { config: z.record(z.any()).describe("A RunConfig object: target, actors, scope, tiers, checks, viewports.") },
-  async ({ config }) => {
-    const run = await Run.create(config);
+  "Start a QA run from a config — or RESUME a prior one by passing resumeRunId (reopens runs/<runId>/ledger.db, re-queues interrupted nodes, continues from the frontier; finished nodes stay done). Launches the browser, logs in each actor, seeds the frontier. Returns the runId — pass it to every other tool.",
+  {
+    config: z.record(z.any()).describe("A RunConfig object: target, actors, scope, tiers, checks, viewports, browser."),
+    resumeRunId: z.string().optional().describe("A prior runId (the runs/<runId> directory name) to resume instead of starting fresh."),
+  },
+  async ({ config, resumeRunId }) => {
+    const run = await Run.create(config, resumeRunId);
     runs.set(run.id, run);
-    return ok({ runId: run.id, status: run.ledger.status(run.id), runDir: run.ledger.runDir });
+    return ok({
+      runId: run.id,
+      resumed: Boolean(resumeRunId),
+      requeuedInterrupted: run.resumedInterrupted,
+      status: run.ledger.status(run.id),
+      runDir: run.ledger.runDir,
+    });
   },
 );
 

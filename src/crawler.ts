@@ -30,15 +30,26 @@ export class Run {
     this.ledger = ledger;
   }
 
+  /**
+   * Start a new run, or RESUME one: pass `existingId` (a prior runId) and the same `outDir`, and this
+   * reopens `outDir/<runId>/ledger.db`, re-queues any node interrupted mid-inspection, and continues
+   * from the frontier. Everything already `passed`/`failed` stays done — inspection is idempotent and
+   * `enqueue` skips known nodes, so resuming never redoes finished work.
+   */
   static async create(rawConfig: unknown, existingId?: string): Promise<Run> {
     const config = RunConfigSchema.parse(rawConfig);
     const id = existingId ?? `${config.name}-${new Date().toISOString().slice(0, 10)}-${shortHash(randomUUID()).slice(0, 6)}`;
     const ledger = new Ledger(config.outDir, id);
     ledger.startRun(id, config.name, config.target, JSON.stringify(config));
+    const requeued = existingId ? ledger.requeueInterrupted(id) : 0;
     const run = new Run(id, config, ledger);
+    run.resumedInterrupted = requeued;
     await run.boot();
     return run;
   }
+
+  /** How many `in_progress` nodes were put back on the frontier when this run was resumed. */
+  resumedInterrupted = 0;
 
   private async boot(): Promise<void> {
     this.pool = await BrowserPool.launch(this.config);
