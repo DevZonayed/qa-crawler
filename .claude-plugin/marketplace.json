@@ -11,7 +11,7 @@
     {
       "name": "qa-crawler",
       "source": "./",
-      "description": "Autonomous QA coverage crawler: maps the whole app and inspects every node (the inverted maze). Deterministic MCP engine (frontier, dedup, replay, SQLite coverage ledger, a11y/visual/functional checks) + qa-crawl skill + /qa-crawl command + orchestrator/worker subagents. Drives a visible Neko browser (local or remote) with per-session tab isolation. NOTE: run `pnpm run setup` in the plugin directory once after install (native SQLite + Chromium).",
+      "description": "Autonomous QA coverage crawler: maps the whole app and inspects every node (the inverted maze). Deterministic MCP engine (frontier, dedup, replay, SQLite coverage ledger, a11y/visual/functional checks) + qa-crawl skill + /qa-crawl command + orchestrator/worker subagents. Drives a visible Neko browser (local or remote) with per-session tab isolation. NOTE: run `sh setup.sh` in the plugin directory once after install (native SQLite + Chromium).",
       "version": "1.0.0",
       "author": { "name": "DevZonayed" },
       "keywords": ["qa", "testing", "coverage", "crawler", "accessibility", "playwright", "neko", "mcp"],

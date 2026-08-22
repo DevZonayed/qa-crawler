@@ -26,8 +26,9 @@ Golden QA Session*. The short version — six invariants, enforced by the ledger
 ## Install
 
 Requires Node ≥ 20 and pnpm. One native step is unavoidable everywhere: `better-sqlite3` compiles a
-native module and Playwright downloads Chromium — so every install path ends with **`pnpm run setup`**
-(= `pnpm install && pnpm build`) run once inside the plugin directory.
+native module and Playwright downloads Chromium — so every install path ends with **`sh setup.sh`**
+(= `pnpm install && pnpm build`) run once inside the plugin directory. (It is a plain shell script, not
+a package.json script, because pnpm refuses to `run` scripts before `node_modules` exists.)
 
 ### As a Claude Code plugin (recommended)
 
@@ -37,7 +38,7 @@ native module and Playwright downloads Chromium — so every install path ends w
 /plugin install qa-crawler@qa-crawler-marketplace
 
 # 2. One-time build inside the installed plugin directory (native SQLite + Chromium)
-cd ~/.claude/plugins/qa-crawler* && pnpm run setup    # path shown by /plugin
+cd ~/.claude/plugins/qa-crawler* && sh setup.sh          # path shown by /plugin
 
 # 3. Verify
 /qa-crawl https://example.com
@@ -47,7 +48,7 @@ Working from a clone instead (development / your own machine):
 
 ```bash
 git clone https://github.com/DevZonayed/qa-crawler && cd qa-crawler
-pnpm run setup
+sh setup.sh
 node dist/cli.js --url https://example.com          # smoke: should report ~2 a11y findings
 ```
 
