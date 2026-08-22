@@ -14,8 +14,10 @@ pnpm build
 
 echo "▶ verifying the native SQLite module…"
 if ! node -e "require('better-sqlite3')" 2>/dev/null; then
-  echo "  better-sqlite3 binary missing — rebuilding from source…"
-  pnpm rebuild better-sqlite3
+  echo "  better-sqlite3 binary missing — compiling from source…"
+  # pnpm rebuild respects the same build-script block, so compile directly in the package dir.
+  SQLITE_DIR=$(find node_modules/.pnpm -maxdepth 3 -type d -path "*better-sqlite3@*/node_modules/better-sqlite3" | head -1)
+  ( cd "$SQLITE_DIR" && npm run build-release )
   node -e "require('better-sqlite3')"
 fi
 
