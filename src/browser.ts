@@ -45,9 +45,11 @@ export class ActorSession {
     readonly actor: Actor,
     readonly context: BrowserContext,
     readonly page: Page,
-    /** false when we borrowed Neko's existing visible context — we must not close it. */
+    /** false when we borrowed an existing context — we must not close it. (Always true now.) */
     private readonly ownsContext: boolean,
     private readonly bringToFront: boolean,
+    /** This tab's isolation tag, `qa:<sessionKey>:<actor>`. This session touches ONLY this tab. */
+    readonly tag: string,
   ) {}
 
   static async create(
@@ -55,9 +57,9 @@ export class ActorSession {
     page: Page,
     actor: Actor,
     target: string,
-    opts: { ownsContext: boolean; bringToFront: boolean },
+    opts: { ownsContext: boolean; bringToFront: boolean; tag: string },
   ): Promise<ActorSession> {
-    const session = new ActorSession(actor, context, page, opts.ownsContext, opts.bringToFront);
+    const session = new ActorSession(actor, context, page, opts.ownsContext, opts.bringToFront, opts.tag);
     page.on("console", (m) => {
       if (m.type() === "error") session.consoleErrors.push(m.text().slice(0, 400));
     });
@@ -268,13 +270,15 @@ export class ActorSession {
  * get isolated contexts (still in the same visible Chrome, brought to front as they act).
  */
 export class BrowserPool {
-  private visibleClaimed = false;
+  private readonly sessionKey: string;
 
   private constructor(
     readonly browser: Browser,
     private readonly ownsBrowser: boolean,
     private readonly opts: BrowserOpts,
-  ) {}
+  ) {
+    this.sessionKey = resolveSecret(opts.sessionKey) || process.env.QA_SESSION || "qa";
+  }
 
   static async launch(config: RunConfig): Promise<BrowserPool> {
     const b = config.browser;
@@ -292,25 +296,22 @@ export class BrowserPool {
     return new BrowserPool(browser, false, b);
   }
 
+  /**
+   * Create a DEDICATED, ISOLATED tab for this actor. We never reuse or touch a pre-existing tab: each
+   * actor gets its own browser context (own cookies) + one page, tagged `qa:<sessionKey>:<actor>`. We
+   * only ever act through THIS page object, and we never enumerate or drive tabs we didn't create — so
+   * another session's tab in the same Neko is never read, driven, or closed. Give concurrent runs
+   * different `sessionKey`s and they can share one Neko without colliding.
+   */
   async session(actor: Actor, target: string): Promise<ActorSession> {
     const storage = actor.auth?.storageStatePath;
-    let context: BrowserContext;
-    let page: Page;
-    let ownsContext: boolean;
-
-    const canReuse = !this.ownsBrowser && this.opts.reuseVisibleContext && !this.visibleClaimed && !storage;
-    const existing = this.browser.contexts();
-    if (canReuse && existing.length > 0 && existing[0]) {
-      context = existing[0];
-      page = context.pages()[0] ?? (await context.newPage());
-      ownsContext = false;
-      this.visibleClaimed = true;
-    } else {
-      context = await this.browser.newContext(storage ? { storageState: storage } : {});
-      page = await context.newPage();
-      ownsContext = true;
-    }
-    return ActorSession.create(context, page, actor, target, { ownsContext, bringToFront: this.opts.bringToFront });
+    const context = await this.browser.newContext(storage ? { storageState: storage } : {});
+    const page = await context.newPage();
+    const tag = `qa:${this.sessionKey}:${actor.id}`;
+    // Best-effort marker (survives same-origin navigation); the hard guarantee is that we only ever
+    // hold and drive THIS page — the crawler never calls browser.contexts()/pages() to grab others.
+    await page.evaluate((t) => { try { (window as unknown as { name: string }).name = t; } catch { /* ignore */ } }, tag).catch(() => {});
+    return ActorSession.create(context, page, actor, target, { ownsContext: true, bringToFront: this.opts.bringToFront, tag });
   }
 
   async close(): Promise<void> {

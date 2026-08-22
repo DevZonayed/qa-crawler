@@ -98,11 +98,23 @@ node dist/cli.js --url https://your-app.com                    # launch (headles
   "mode": "neko",                       // launch | neko | cdp
   "cdpEndpoint": "http://127.0.0.1:9223",// neko default; set for cdp/remote
   "headers": { "Authorization": "Bearer ${NEKO_TOKEN}" }, // optional, for a remote behind auth
-  "reuseVisibleContext": true,          // run in the tab the user is watching
+  "sessionKey": "audit-jon",            // tab-isolation key (see below); default $QA_SESSION or "qa"
   "bringToFront": true,                 // keep the acted tab on the shared screen
   "slowMo": 250                         // ms per action, so a human can follow
 }
 ```
+
+### Tab isolation — one dedicated tab per actor, never touch another session's
+
+Every actor gets its **own isolated, dedicated tab** (a fresh browser context with its own cookies,
+plus one page), tagged `qa:<sessionKey>:<actor>`. The engine **only ever drives tabs it created** — it
+never reads, clicks, navigates, or closes a pre-existing tab or another session's tab in the same Neko.
+So you can point several runs (or another Claude session) at one Neko at once, as long as each run uses
+a **distinct `sessionKey`** (set it in the config, or via `$QA_SESSION`). On close, a run removes only
+its own tabs; the browser and everyone else's tabs are left exactly as they were.
+
+- `actor "admin"` under `sessionKey "audit-jon"` → tab `qa:audit-jon:admin`.
+- A second run with `sessionKey "smoke-ci"` → tab `qa:smoke-ci:anon` — completely separate, invisible to the first.
 
 **Adding a REMOTE Neko.** Neko's CDP binds to loopback on its host, so expose it to the engine one of
 two ways, then point `cdpEndpoint` at it:

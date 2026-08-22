@@ -4,9 +4,10 @@
   "browser": {
     "mode": "neko",
     "cdpEndpoint": "http://127.0.0.1:9223",
-    "reuseVisibleContext": true,
+    "sessionKey": "audit-jon",
     "bringToFront": true,
     "slowMo": 250,
+    "$tab_note": "Every actor gets its OWN isolated tab tagged qa:<sessionKey>:<actor>. The engine never touches a tab it didn't create, so this run can share one Neko with other sessions safely — just give each run a distinct sessionKey (or set $QA_SESSION).",
     "$remote_note": "For a REMOTE Neko, set mode to 'cdp' and cdpEndpoint to the remote host's exposed CDP, e.g. { \"mode\": \"cdp\", \"cdpEndpoint\": \"${QA_NEKO_CDP}\", \"headers\": { \"Authorization\": \"Bearer ${NEKO_TOKEN}\" } }. Easiest remote path: SSH-tunnel the remote 9223 to localhost (ssh -N -L 9223:127.0.0.1:9223 user@remote) and keep this as http://127.0.0.1:9223."
   },
   "actors": [

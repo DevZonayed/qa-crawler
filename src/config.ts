@@ -88,9 +88,14 @@ export const BrowserSchema = z.object({
   cdpEndpoint: z.string().optional(),
   /** Headers sent when connecting (e.g. `{ "Authorization": "Bearer ${NEKO_TOKEN}" }`) for a remote Neko behind auth. */
   headers: z.record(z.string()).default({}),
-  /** Use Neko's EXISTING visible context/tab for the first actor (so it appears in the tab the user is watching). */
-  reuseVisibleContext: z.boolean().default(true),
-  /** Bring the acted page to the front before each step, so the shared Neko screen shows the active tab. */
+  /**
+   * Tab isolation key. Every actor gets its OWN dedicated, isolated tab tagged `qa:<sessionKey>:<actor>`.
+   * The engine ONLY ever touches tabs it created with this key — it never reads, drives, or closes any
+   * pre-existing tab or another session's tab in the same Neko. Give concurrent runs different keys
+   * (default from `$QA_SESSION`, else "qa") so they can share one Neko without stepping on each other.
+   */
+  sessionKey: z.string().optional(),
+  /** Bring the acted (dedicated) tab to the front before each step, so the shared Neko screen shows it. */
   bringToFront: z.boolean().default(true),
   /** Slow each action down (ms) so a human watching Neko can follow along. 0 = full speed. */
   slowMo: z.number().int().nonnegative().default(0),
