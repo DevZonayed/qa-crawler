@@ -33,8 +33,17 @@ export function classify(obs: Observation): Archetype[] {
   const url = obs.url.toLowerCase();
 
   if (obs.hasPasswordField) {
-    if (/\b(sign up|register|create (an )?account)\b/.test(text) || /(signup|register)/.test(url)) out.add("signup");
-    else out.add("login");
+    // A password field alone does NOT make a login screen. A change-password form on /profile or
+    // /settings has one too, and classifying it as `login` fired a bogus "no password-recovery path"
+    // finding on the first real run. Require a positive signal from the URL or the page's own words,
+    // and let account-management pages fall through to `form`.
+    const signup = /\b(sign up|register|create (an )?account)\b/.test(text) || /(signup|register|create-account)/.test(url);
+    const loginUrl = /(^|\/)(login|signin|sign-in|auth|sso)(\/|$|\?)/.test(url);
+    const loginText = /\b(sign in|log in|login)\b/.test(text);
+    const accountPage = /(profile|settings|account|security|password|users?)(\/|$)/.test(url);
+    if (signup) out.add("signup");
+    else if (loginUrl || (loginText && !accountPage)) out.add("login");
+    else out.add("form"); // change-password / credential field inside an account screen
   }
   if (/(forgot|reset).{0,12}password/.test(text) || /(forgot|reset)-?password/.test(url)) out.add("forgot-password");
   if (obs.formCount > 0 && !obs.hasPasswordField) out.add("form");

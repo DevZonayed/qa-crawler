@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
-import { Ledger } from "./ledger.js";
+import { Ledger, type FindingRow } from "./ledger.js";
 
 /** Render the run to a self-contained HTML report + a machine-readable JSON, both in the run dir. */
 export function writeReport(ledger: Ledger, runId: string): { html: string; json: string } {
@@ -13,16 +13,38 @@ export function writeReport(ledger: Ledger, runId: string): { html: string; json
   const jsonPath = join(ledger.runDir, "report.json");
   writeFileSync(jsonPath, JSON.stringify({ runId, summary: st, findings, nodes }, null, 2));
 
-  const findingRows = findings
-    .map((f) => {
-      const ev = JSON.parse(f.evidence || "{}") as Record<string, string>;
-      const shot = Object.entries(ev).find(([k]) => k.startsWith("screenshot"));
+  // ROLL UP by root cause. A shared component (a nav link, a layout) produces the SAME finding on every
+  // page — the first real run reported one nav contrast bug 28 separate times, burying everything else.
+  // Group by (severity, category, title) and show the instance count + where it occurs; the ledger
+  // still holds the per-node rows, so no evidence is lost.
+  const groups = new Map<string, { f: FindingRow; nodes: string[]; shot?: string }>();
+  for (const f of findings) {
+    const key = `${f.severity}|${f.category}|${f.title}`;
+    const ev = JSON.parse(f.evidence || "{}") as Record<string, string>;
+    const shot = Object.entries(ev).find(([k]) => k.startsWith("screenshot"))?.[1];
+    const g = groups.get(key);
+    const where = (f.node_id ?? "").replace(/^[^:]*::https?:\/\/[^/]+/, "") || "/";
+    if (g) {
+      if (!g.nodes.includes(where)) g.nodes.push(where);
+      if (!g.shot && shot) g.shot = shot;
+    } else {
+      groups.set(key, { f, nodes: [where], shot });
+    }
+  }
+
+  const findingRows = [...groups.values()]
+    .map(({ f, nodes, shot }) => {
+      const many = nodes.length > 1;
+      const where = many
+        ? `<div class="where"><b>${nodes.length} pages:</b> ${nodes.slice(0, 8).map((n) => `<code>${esc(n)}</code>`).join(" ")}${nodes.length > 8 ? ` <i>+${nodes.length - 8} more</i>` : ""}</div>`
+        : `<div class="where"><code>${esc(nodes[0] ?? "/")}</code></div>`;
       return `<tr class="sev-${f.severity}">
-        <td><span class="pill p-${f.severity}">${f.severity} ${sev(f.severity)}</span></td>
+        <td><span class="pill p-${f.severity}">${f.severity} ${sev(f.severity)}</span>${many ? `<div class="count">×${nodes.length}</div>` : ""}</td>
         <td><b>${esc(f.title)}</b><div class="detail">${esc(f.detail).slice(0, 400)}</div>
-            ${f.expected ? `<div class="ea">expected <code>${esc(f.expected)}</code> · actual <code>${esc(f.actual ?? "")}</code></div>` : ""}</td>
+            ${f.expected ? `<div class="ea">expected <code>${esc(f.expected)}</code> · actual <code>${esc(f.actual ?? "")}</code></div>` : ""}
+            ${where}</td>
         <td class="mono">${esc(f.category)}</td>
-        <td class="mono">${shot ? `<a href="${esc(rel(shot[1]))}">shot</a>` : ""}</td>
+        <td class="mono">${shot ? `<a href="${esc(rel(shot))}">shot</a>` : ""}</td>
       </tr>`;
     })
     .join("");
@@ -52,7 +74,7 @@ main{max-width:1040px;margin:0 auto;padding:32px 20px 80px}h1{font-size:1.9rem;m
 .card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}.card .n{font-size:1.7rem;font-weight:700}.card .l{color:var(--muted);font-size:.8rem}
 table{width:100%;border-collapse:collapse;font-size:.86rem;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
 th,td{text-align:left;padding:9px 11px;border-top:1px solid var(--line);vertical-align:top}th{background:var(--sunken);font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.detail{color:var(--muted);font-size:.82rem;margin-top:3px;white-space:pre-wrap}.ea{font-size:.78rem;margin-top:3px}
+.detail{color:var(--muted);font-size:.82rem;margin-top:3px;white-space:pre-wrap}\n.where{margin-top:5px;font-size:.76rem;color:var(--muted)}.where code{font-size:.9em}\n.count{font-size:.7rem;color:var(--muted);margin-top:4px;font-family:ui-monospace,monospace}.ea{font-size:.78rem;margin-top:3px}
 .pill{display:inline-block;font-family:ui-monospace,monospace;font-size:.7rem;padding:.12em .5em;border-radius:5px;white-space:nowrap}
 .p-S1{background:var(--S1b);color:var(--S1)}.p-S2{background:var(--S2b);color:var(--S2)}.p-S3{background:var(--S3b);color:var(--S3)}.p-S4{background:var(--S4b);color:var(--S4)}.p-S5{background:var(--S5b);color:var(--S5)}
 .tier{background:var(--sunken);color:var(--muted)}.s-passed{background:var(--S5b);color:var(--S5)}.s-failed{background:var(--S1b);color:var(--S1)}.s-queued,.s-blocked,.s-skipped,.s-in_progress{background:var(--S3b);color:var(--S3)}
@@ -63,7 +85,7 @@ code{background:var(--sunken);padding:.05em .3em;border-radius:4px;font-size:.85
 <h1>QA coverage report</h1><div class="meta">${esc(runId)} · ${new Date().toISOString()}</div>
 <div class="cards">
 <div class="card"><div class="n">${st.coveragePct}%</div><div class="l">coverage (${(st.byStatus.passed ?? 0) + (st.byStatus.failed ?? 0)}/${st.total} nodes)</div></div>
-<div class="card"><div class="n">${findings.length}</div><div class="l">findings</div></div>
+<div class="card"><div class="n">${groups.size}</div><div class="l">distinct issues <span style="opacity:.6">(${findings.length} instances)</span></div></div>
 <div class="card"><div class="n" style="color:var(--S1)">${st.findingsBySeverity.S1 ?? 0}</div><div class="l">blockers (S1)</div></div>
 <div class="card"><div class="n" style="color:var(--S2)">${st.findingsBySeverity.S2 ?? 0}</div><div class="l">critical (S2)</div></div>
 <div class="card"><div class="n">${st.notTested.length}</div><div class="l">not tested</div></div>

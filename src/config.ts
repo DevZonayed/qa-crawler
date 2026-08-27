@@ -69,6 +69,30 @@ export type Checks = z.infer<typeof ChecksSchema>;
 export const ViewportSchema = z.object({ label: z.string(), w: z.number().int(), h: z.number().int() });
 
 /**
+ * Action-driven state exploration.
+ *
+ * Link-following only ever sees each route in its INITIAL state, so a form or wizard that only appears
+ * after clicking "Add" is never covered — the (route x control x STATE x actor) matrix collapses to
+ * (route x actor). When enabled, the engine clicks SAFE, state-revealing controls (openers and tabs)
+ * and registers whatever they reveal as its own node, replayable via `goto + click`.
+ *
+ * OFF by default and ALLOW-LIST driven: a control is clicked only if its label looks like an opener AND
+ * does not look destructive. Anything that spends money, sends mail, files a return, deletes, approves
+ * or disconnects is never clicked (INV-6, do no harm).
+ */
+export const ExploreSchema = z.object({
+  /** Master switch. Off by default — clicking is riskier than reading. */
+  actions: z.boolean().default(false),
+  /** How many revealed states to register per base node. */
+  maxPerNode: z.number().int().nonnegative().default(3),
+  /** Extra label patterns (regex source) to NEVER click, on top of the built-in deny-list. */
+  deny: z.array(z.string()).default([]),
+  /** Extra label patterns (regex source) to treat as safe openers, on top of the built-in allow-list. */
+  allow: z.array(z.string()).default([]),
+});
+export type ExploreOpts = z.infer<typeof ExploreSchema>;
+
+/**
  * Where the browser comes from.
  *
  * - `launch` (default): the engine starts its own headless Chromium. Fast, isolated, invisible.
@@ -127,6 +151,8 @@ export const RunConfigSchema = z.object({
   outDir: z.string().default("runs"),
   /** Browser transport: local launch, or connect over CDP to a (local or remote) Neko. */
   browser: BrowserSchema.default({}),
+  /** Action-driven state exploration (opt-in). */
+  explore: ExploreSchema.default({}),
   /** Only used in `launch` mode. Neko is always headful (that is the point — you watch it). */
   headless: z.boolean().default(true),
   /** Politeness: ms to wait between navigations. */

@@ -182,6 +182,37 @@ browser tools (navigate / click / snapshot) — visible in Neko — for ad-hoc s
 qa-crawler engine. Set `QA_NEKO_CDP` to a remote endpoint to point both at a remote Neko. Remove the
 `playwright` block from `.mcp.json` / `plugin.json` to use the engine alone.
 
+## Action-driven state coverage (`explore.actions`)
+
+Link-following only ever sees each route in its **initial** state, so a form that appears after clicking
+"Add customer" is never covered. Turn on exploration and the engine also clicks **safe, state-revealing
+controls** (openers and tabs), registering whatever they reveal as its own node — replayable via
+`goto + click`, so it is re-checkable and resumable like any other node.
+
+```jsonc
+"explore": {
+  "actions": true,     // OFF by default — clicking carries more risk than reading
+  "maxPerNode": 3,     // states registered per base route
+  "deny": ["^Merge"],  // extra labels to never click
+  "allow": ["^Compose"]// extra labels to treat as safe openers
+}
+```
+
+**Safety is allow-list first.** A control is clicked only when its label reads like an opener
+(`add|new|create|open|edit|view|show|expand|filter|manage|…`, plus any `role=tab`) **and** does not read
+like an action with consequences. The deny-list is deliberately broad — `delete, remove, archive, pay,
+purchase, refund, transfer, submit, confirm, approve, authorise, sign, send, email, invite, file,
+publish, disconnect, revoke, cancel, log out, import, export, …` — because a false refusal costs a
+little coverage while a false click can charge a card, email a client, or file a tax return.
+
+A **global component** (a ⌘K palette, a help drawer) lives in every page's nav, so each opener label is
+explored at most twice run-wide; otherwise it would be re-opened on every route and crowd out real
+discoveries.
+
+Measured on SecureWire staging: 18 base routes → **28 nodes (+56%)**, revealing `add-card` (45
+controls), `add-customer`, `add-member`, `add-employee`, `add-supplier`, `configure`, `preview-portal`
+— surfaces no URL reaches.
+
 ## The traversal model (the "inverted maze")
 
 | | Maze solver | QA crawler (this) |
