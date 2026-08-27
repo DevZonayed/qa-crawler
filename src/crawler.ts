@@ -8,6 +8,7 @@ import { Ledger, type NodeRow, type Tier } from "./ledger.js";
 import { classify, PLAYBOOKS, type Archetype } from "./archetypes.js";
 import { runChecks, findingId, resetLinkBudget, type RawFinding } from "./checks.js";
 import { nodeId, routeTemplate, sameOrigin, matchesAny, shortHash } from "./state.js";
+import { findOpeners, probeOpener } from "./explore.js";
 
 /**
  * A live run. Owns the browser, one session per actor, and the ledger. Everything the run KNOWS lives
@@ -51,6 +52,15 @@ export class Run {
 
   /** How many `in_progress` nodes were put back on the frontier when this run was resumed. */
   resumedInterrupted = 0;
+
+  /**
+   * How many times each opener label has been explored run-wide. A GLOBAL component (the ⌘K palette,
+   * a help drawer) sits in the nav of every page, so without a cap it is re-explored on every route —
+   * on the first exploring run the search palette alone accounted for 7 of 12 discovered states.
+   * Explore a given opener a couple of times (enough to catch a per-route variant), then stop.
+   */
+  private openerSeen = new Map<string, number>();
+  private static readonly MAX_PER_OPENER = 2;
 
   /** Which browser transport `auto` (or an explicit mode) actually resolved to. */
   get browserDescription(): string {
@@ -140,7 +150,19 @@ export class Run {
     this.ledger.setStatus(node.id, "in_progress");
     if (this.config.throttleMs) await new Promise((r) => setTimeout(r, this.config.throttleMs));
 
-    const httpStatus = await session.goto(node.url);
+    // Replay the recorded path. A base node is a plain `goto`; a state node discovered by
+    // action-exploration is `goto + click(s)`, which is what makes a modal/tab/panel reachable again.
+    const steps = JSON.parse(node.replay_path || "[]") as { action: string; value?: string }[];
+    let httpStatus: number | null = null;
+    if (steps.length <= 1) {
+      httpStatus = await session.goto(node.url);
+    } else {
+      for (const step of steps) {
+        if (step.action === "goto" && step.value) httpStatus = await session.goto(step.value);
+        else if (step.action === "click" && step.value)
+          await session.act({ kind: "click", target: step.value }).catch(() => {});
+      }
+    }
     const evidence: Record<string, unknown> = { http: httpStatus };
 
     // Primary viewport: full observation + checks.
@@ -198,6 +220,40 @@ export class Run {
 
     // Expand the graph along same-origin links.
     for (const href of obs.links) this.enqueueUrl(node.actor, href, node.depth + 1, node.id);
+
+    // Expand the graph along SAFE ACTIONS: click openers/tabs to reveal states that no URL reaches.
+    // Only from a base node (a state node's id carries `#`), so this never fans out combinatorially.
+    if (this.config.explore.actions && !node.id.includes("#") && this.config.explore.maxPerNode > 0) {
+      const openers = findOpeners(obs, this.config.explore).slice(0, this.config.explore.maxPerNode * 2);
+      let registered = 0;
+      for (const opener of openers) {
+        if (registered >= this.config.explore.maxPerNode) break;
+        // State nodes must respect the same budget as link nodes (INV-5: budgets are surfaced, not silent).
+        if (this.ledger.status(this.id).total >= this.config.scope.maxNodes) break;
+        const seen = this.openerSeen.get(opener.slug) ?? 0;
+        if (seen >= Run.MAX_PER_OPENER) continue; // a global component, already covered
+        const probe = await probeOpener(session, node.url, obs, opener);
+        if (!probe.revealed) continue;
+        this.openerSeen.set(opener.slug, seen + 1);
+        const stateId = `${node.id}#${opener.slug}`;
+        const added = this.ledger.enqueue({
+          id: stateId,
+          run_id: this.id,
+          actor: node.actor,
+          url: node.url,
+          route_template: `${node.route_template}#${opener.slug}`,
+          depth: node.depth + 1,
+          tier: node.tier,
+          archetypes: "[]",
+          parent_id: node.id,
+          replay_path: JSON.stringify([
+            { action: "goto", value: node.url },
+            { action: "click", value: opener.control.selector },
+          ]),
+        });
+        if (added) registered++;
+      }
+    }
 
     // Persist findings.
     for (const f of findings)

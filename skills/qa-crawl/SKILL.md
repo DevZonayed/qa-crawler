@@ -31,6 +31,7 @@ skipped and forgotten). **Never let the engine do your job** (a green automatic 
 ### 1 — Plan (define steps first)
 - Confirm the target, the access level (no code / client / client+server), the scope (partial flow vs complete), and where the **oracle** comes from (spec docs, user stories, or "the product's own copy is the contract").
 - Build the config: `target`, `browser` (see step 0), `actors` (one per role/permission you can authenticate — anonymous first so register/forgot-password get covered), `scope` (include/exclude globs, maxDepth, maxNodes), `tiers` (T1 = auth/payments/mutations → exhaustive; T3 = static → smoke), `checks`, `viewports`.
+- For a **complete** audit turn on `explore.actions` (with `maxPerNode`) so the crawl also opens modals/tabs/panels — without it you only ever see each route's initial state. It is allow-list gated and never clicks destructive controls; add `explore.deny` patterns for anything app-specific you want untouched.
 - With client code: seed `scope.include` and `tiers` from the **route manifest** so the engine's crawl can be diffed against it (orphan/unreachable routes are findings).
 - Call **`qa_run_init`** with the config → keep the `runId`.
 
