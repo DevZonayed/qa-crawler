@@ -22,7 +22,7 @@
     "smoke": "node dist/cli.js --url https://example.com"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "axe-core": "^4.10.2",
     "better-sqlite3": "^11.5.0",
     "playwright": "^1.48.2",
